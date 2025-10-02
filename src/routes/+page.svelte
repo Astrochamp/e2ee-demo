@@ -1,7 +1,7 @@
 <script lang="ts">
   import { CryptoManager, CryptoUtils } from "$lib/crypto";
   import type { HexString } from "$lib/types";
-  import { ed25519 } from "@noble/curves/ed25519.js";
+  import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 
   // Demo state
   let currentStep = 0;
@@ -70,34 +70,25 @@
       setTimeout(async () => {
         switch (currentStep) {
           case 1:
-            // generate ephemeral info
-            const aliceEphemeralKeyPair = (await crypto.subtle.generateKey(
-              { name: "X25519" },
-              true,
-              ["deriveKey", "deriveBits"],
-            )) as CryptoKeyPair;
+            // generate ephemeral info using x25519 from @noble/curves
+            const aliceEphemeralPrivate = x25519.utils.randomSecretKey();
+            const aliceEphemeralPublic = x25519.getPublicKey(
+              aliceEphemeralPrivate,
+            );
 
-            aliceKeys.ephemeralPrivate = await crypto.subtle
-              .exportKey("raw", aliceEphemeralKeyPair.privateKey)
-              .then((key) => CryptoUtils.bufferToHex(new Uint8Array(key)));
+            aliceKeys.ephemeralPrivate = CryptoUtils.bufferToHex(
+              aliceEphemeralPrivate,
+            );
+            aliceKeys.ephemeralPublic =
+              CryptoUtils.bufferToHex(aliceEphemeralPublic);
 
-            aliceKeys.ephemeralPublic = await crypto.subtle
-              .exportKey("raw", aliceEphemeralKeyPair.publicKey)
-              .then((key) => CryptoUtils.bufferToHex(new Uint8Array(key)));
+            const bobEphemeralPrivate = x25519.utils.randomSecretKey();
+            const bobEphemeralPublic = x25519.getPublicKey(bobEphemeralPrivate);
 
-            const bobEphemeralKeyPair = (await crypto.subtle.generateKey(
-              { name: "X25519" },
-              true,
-              ["deriveKey", "deriveBits"],
-            )) as CryptoKeyPair;
-
-            bobKeys.ephemeralPrivate = await crypto.subtle
-              .exportKey("raw", bobEphemeralKeyPair.privateKey)
-              .then((key) => CryptoUtils.bufferToHex(new Uint8Array(key)));
-
-            bobKeys.ephemeralPublic = await crypto.subtle
-              .exportKey("raw", bobEphemeralKeyPair.publicKey)
-              .then((key) => CryptoUtils.bufferToHex(new Uint8Array(key)));
+            bobKeys.ephemeralPrivate =
+              CryptoUtils.bufferToHex(bobEphemeralPrivate);
+            bobKeys.ephemeralPublic =
+              CryptoUtils.bufferToHex(bobEphemeralPublic);
             break;
           case 2:
             // Alice signs key info
@@ -162,6 +153,8 @@
             );
 
             const infoShared = new TextEncoder().encode("shared");
+            const infoCipher = new TextEncoder().encode("cipher");
+            const infoSign = new TextEncoder().encode("signature");
             const salt = new Uint8Array(16); // all zero salt
 
             const sharedDerivedBits = await crypto.subtle.deriveBits(
@@ -191,11 +184,6 @@
                 ),
               )
               .then((enc) => CryptoUtils.bufferToHex(new Uint8Array(enc)));
-            break;
-          case 6: {
-            const infoCipher = new TextEncoder().encode("cipher");
-            const infoSign = new TextEncoder().encode("signature");
-            const salt = new Uint8Array(16);
 
             const messageSecretBaseKey = await crypto.subtle.importKey(
               "raw",
@@ -242,12 +230,17 @@
                 ),
               ),
             ) as HexString;
-
+            break;
+          case 6: {
             // sign (recipient eph. pub || message) with message signing key
-            const msig = ed25519.sign(
-              new Uint8Array(
-                Buffer.from(bobKeys.ephemeralPublic! + message, "utf8"),
+            const dataToSign = new Uint8Array([
+              ...new Uint8Array(
+                CryptoUtils.hexToBuffer(bobKeys.ephemeralPublic!),
               ),
+              ...new TextEncoder().encode(message),
+            ]);
+            const msig = ed25519.sign(
+              dataToSign,
               new Uint8Array(CryptoUtils.hexToBuffer(messageSigningPrivateKey)),
             );
             messageSignature = CryptoUtils.bufferToHex(msig) as HexString;
@@ -384,11 +377,15 @@
             }
 
             // verify signature
-            const isMessageSignatureValid = ed25519.verify(
-              new Uint8Array(
-                Buffer.from(bobKeys.ephemeralPublic! + message, "utf8"),
+            const dataToVerify = new Uint8Array([
+              ...new Uint8Array(
+                CryptoUtils.hexToBuffer(bobKeys.ephemeralPublic!),
               ),
+              ...new TextEncoder().encode(message),
+            ]);
+            const isMessageSignatureValid = ed25519.verify(
               new Uint8Array(CryptoUtils.hexToBuffer(messageSignature)),
+              dataToVerify,
               new Uint8Array(CryptoUtils.hexToBuffer(messageSigningPublicKey)),
             );
 
@@ -511,8 +508,8 @@
               Bob verifies the signature, generates random value and ephemeral
               keypair, computes shared secret.
             {:else if currentStep === 4}
-              Bob signs and sends key info back. Alice verifies and computes
-              shared secret.
+              Bob signs and sends key info back. Alice verifies. Both compute
+              the shared secret.
             {:else if currentStep === 5}
               Alice derives encryption key from shared secret and message keys
               from message secret.

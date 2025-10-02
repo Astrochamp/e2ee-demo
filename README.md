@@ -1,38 +1,28 @@
-# sv
+# E2EE Demo
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+An interactive demonstration of end-to-end encryption using modern cryptographic primitives.
 
-## Creating a project
+## Features
 
-If you're seeing this, you've probably already done this step. Congrats!
+- **Key Exchange**: X25519 elliptic curve Diffie-Hellman
+- **Digital Signatures**: Ed25519 (EdDSA)
+- **Symmetric Encryption**: AES-128-GCM
+- **Interactive Visualisation**: Step-by-step walkthrough of the encryption process
 
-```sh
-# create a new project in the current directory
-npx sv create
-
-# create a new project in my-app
-npx sv create my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+## Development
 
 ```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+yarn install
+yarn dev
 ```
 
-## Building
+## Tech Stack
 
-To create a production version of your app:
+- SvelteKit
+- TypeScript
+- [@noble/curves](https://github.com/paulmillr/noble-curves)
+- Tailwind CSS
 
-```sh
-npm run build
-```
+## License
 
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+MIT

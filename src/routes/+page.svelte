@@ -467,6 +467,14 @@
     bobMessageEncryptionKey = "" as HexString;
     bobMessageSigningPublicKey = "" as HexString;
   }
+
+  function truncateHex(hex: string | null): string {
+    if (!hex) return "";
+    if (hex.length > 16) {
+      return hex.slice(0, 8) + "..." + hex.slice(-8);
+    }
+    return hex;
+  }
 </script>
 
 <div class="min-h-screen bg-gray-950">
@@ -609,8 +617,8 @@
               <div class="space-y-2 text-xs">
                 <div class="grid grid-cols-[120px_1fr] gap-2">
                   <span class="text-gray-400">Long-term Key:</span>
-                  <span class="font-mono text-blue-300 break-all"
-                    >{aliceKeys.longTermPublic}</span
+                  <span class="font-mono text-white break-all"
+                    >{truncateHex(aliceKeys.longTermPublic)}</span
                   >
                 </div>
                 {#if currentStep >= 1}
@@ -619,19 +627,19 @@
                   >
                     <span class="text-gray-400">Message Secret:</span>
                     <span class="font-mono text-green-300 break-all"
-                      >{aliceKeys.messageSecret}</span
+                      >{truncateHex(aliceKeys.messageSecret)}</span
                     >
                   </div>
                   <div class="grid grid-cols-[120px_1fr] gap-2">
                     <span class="text-gray-400">Random Value:</span>
-                    <span class="font-mono text-yellow-300 break-all"
-                      >{aliceKeys.randomValue}</span
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(aliceKeys.randomValue)}</span
                     >
                   </div>
                   <div class="grid grid-cols-[120px_1fr] gap-2">
                     <span class="text-gray-400">Ephemeral Pub:</span>
-                    <span class="font-mono text-purple-300 break-all"
-                      >{aliceKeys.ephemeralPublic}</span
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(aliceKeys.ephemeralPublic)}</span
                     >
                   </div>
                 {/if}
@@ -641,7 +649,7 @@
                   >
                     <span class="text-gray-400">Shared Secret:</span>
                     <span class="font-mono text-red-300 break-all"
-                      >{sharedSecret}</span
+                      >{truncateHex(sharedSecret)}</span
                     >
                   </div>
                 {/if}
@@ -651,13 +659,13 @@
                   >
                     <span class="text-gray-400">Msg Enc Key:</span>
                     <span class="font-mono text-cyan-300 break-all"
-                      >{messageEncryptionKey}</span
+                      >{truncateHex(messageEncryptionKey)}</span
                     >
                   </div>
                   <div class="grid grid-cols-[120px_1fr] gap-2">
                     <span class="text-gray-400">Msg Sign Key:</span>
-                    <span class="font-mono text-orange-300 break-all"
-                      >{messageSigningPrivateKey}</span
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(messageSigningPrivateKey)}</span
                     >
                   </div>
                 {/if}
@@ -676,21 +684,21 @@
                   {#if currentStep >= 6}
                     <div class="grid grid-cols-[100px_1fr] gap-2">
                       <span class="text-gray-400">Signature:</span>
-                      <span class="font-mono text-pink-300 break-all"
-                        >{messageSignature}</span
+                      <span class="font-mono text-white break-all"
+                        >{truncateHex(messageSignature)}</span
                       >
                     </div>
                     <div class="grid grid-cols-[100px_1fr] gap-2">
                       <span class="text-gray-400">Encrypted:</span>
-                      <span class="font-mono text-indigo-300 break-all"
-                        >{encryptedMessage}</span
+                      <span class="font-mono text-white break-all"
+                        >{truncateHex(encryptedMessage)}</span
                       >
                     </div>
                   {/if}
                   <div class="grid grid-cols-[100px_1fr] gap-2">
                     <span class="text-gray-400">Enc. Secret:</span>
-                    <span class="font-mono text-teal-300 break-all"
-                      >{encryptedMessageSecret}</span
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(encryptedMessageSecret)}</span
                     >
                   </div>
                 </div>
@@ -718,8 +726,8 @@
               <div class="space-y-2 text-xs">
                 <div class="grid grid-cols-[120px_1fr] gap-2">
                   <span class="text-gray-400">Long-term Key:</span>
-                  <span class="font-mono text-blue-300 break-all"
-                    >{bobKeys.longTermPublic}</span
+                  <span class="font-mono text-white break-all"
+                    >{truncateHex(bobKeys.longTermPublic)}</span
                   >
                 </div>
                 {#if currentStep >= 3}
@@ -727,14 +735,14 @@
                     class="grid grid-cols-[120px_1fr] gap-2 transition-all duration-500"
                   >
                     <span class="text-gray-400">Random Value:</span>
-                    <span class="font-mono text-yellow-300 break-all"
-                      >{bobKeys.randomValue}</span
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(bobKeys.randomValue)}</span
                     >
                   </div>
                   <div class="grid grid-cols-[120px_1fr] gap-2">
                     <span class="text-gray-400">Ephemeral Pub:</span>
-                    <span class="font-mono text-purple-300 break-all"
-                      >{bobKeys.ephemeralPublic}</span
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(bobKeys.ephemeralPublic)}</span
                     >
                   </div>
                 {/if}
@@ -744,7 +752,7 @@
                   >
                     <span class="text-gray-400">Shared Secret:</span>
                     <span class="font-mono text-red-300 break-all"
-                      >{sharedSecret}</span
+                      >{truncateHex(sharedSecret)}</span
                     >
                   </div>
                 {/if}
@@ -754,24 +762,57 @@
                   >
                     <span class="text-gray-400">Dec. Msg Secret:</span>
                     <span class="font-mono text-green-300 break-all"
-                      >{bobDecryptedMessageSecret}</span
+                      >{truncateHex(bobDecryptedMessageSecret)}</span
                     >
                   </div>
                   <div class="grid grid-cols-[120px_1fr] gap-2">
                     <span class="text-gray-400">Msg Enc Key:</span>
                     <span class="font-mono text-cyan-300 break-all"
-                      >{bobMessageEncryptionKey}</span
+                      >{truncateHex(bobMessageEncryptionKey)}</span
                     >
                   </div>
                   <div class="grid grid-cols-[120px_1fr] gap-2">
                     <span class="text-gray-400">Msg Sign Pub:</span>
-                    <span class="font-mono text-orange-300 break-all"
-                      >{bobMessageSigningPublicKey}</span
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(bobMessageSigningPublicKey)}</span
                     >
                   </div>
                 {/if}
               </div>
             </div>
+
+            <!-- Decryption Process -->
+            {#if currentStep >= 6}
+              <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
+                <span class="block text-sm font-medium text-gray-300 mb-4"
+                  >Decryption Process</span
+                >
+                <div class="space-y-2 text-xs">
+                  <div class="grid grid-cols-[120px_1fr] gap-2">
+                    <span class="text-gray-400">Received Enc:</span>
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(encryptedMessage)}</span
+                    >
+                  </div>
+                  <div class="grid grid-cols-[120px_1fr] gap-2">
+                    <span class="text-gray-400">Enc. Secret:</span>
+                    <span class="font-mono text-white break-all"
+                      >{truncateHex(encryptedMessageSecret)}</span
+                    >
+                  </div>
+                  {#if currentStep >= 7}
+                    <div
+                      class="grid grid-cols-[120px_1fr] gap-2 transition-all duration-500"
+                    >
+                      <span class="text-gray-400">Decrypted:</span>
+                      <span class="font-mono text-green-300 break-all"
+                        >{decryptedMessage}</span
+                      >
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
 
             <!-- Decrypted Message -->
             <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
@@ -793,39 +834,6 @@
                 {/if}
               </div>
             </div>
-
-            <!-- Decryption Process -->
-            {#if currentStep >= 6}
-              <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
-                <span class="block text-sm font-medium text-gray-300 mb-4"
-                  >Decryption Process</span
-                >
-                <div class="space-y-2 text-xs">
-                  <div class="grid grid-cols-[120px_1fr] gap-2">
-                    <span class="text-gray-400">Received Enc:</span>
-                    <span class="font-mono text-indigo-300 break-all"
-                      >{encryptedMessage}</span
-                    >
-                  </div>
-                  <div class="grid grid-cols-[120px_1fr] gap-2">
-                    <span class="text-gray-400">Enc. Secret:</span>
-                    <span class="font-mono text-teal-300 break-all"
-                      >{encryptedMessageSecret}</span
-                    >
-                  </div>
-                  {#if currentStep >= 7}
-                    <div
-                      class="grid grid-cols-[120px_1fr] gap-2 transition-all duration-500"
-                    >
-                      <span class="text-gray-400">Decrypted:</span>
-                      <span class="font-mono text-green-300 break-all"
-                        >{decryptedMessage}</span
-                      >
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/if}
           </div>
         </div>
       </div>

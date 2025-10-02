@@ -45,6 +45,11 @@
   let encryptedMessage = "" as HexString;
   let decryptedMessage = "";
 
+  // Bob's derived values (shown in Step 7)
+  let bobDecryptedMessageSecret = "" as HexString;
+  let bobMessageEncryptionKey = "" as HexString;
+  let bobMessageSigningPublicKey = "" as HexString;
+
   let iv1 = crypto.getRandomValues(new Uint8Array(12));
   let iv2 = crypto.getRandomValues(new Uint8Array(12));
 
@@ -317,6 +322,8 @@
               throw new Error("Decrypted message secret does not match!");
             }
 
+            bobDecryptedMessageSecret = decryptedMessageSecret;
+
             // derive message keys
             const bobMessageSecretBaseKey = await crypto.subtle.importKey(
               "raw",
@@ -330,7 +337,7 @@
             const infoSignBob = new TextEncoder().encode("signature");
             const saltBob2 = new Uint8Array(16);
 
-            const bobMessageEncryptionKey = CryptoUtils.bufferToHex(
+            const bobMessageEncryptionKeyDerived = CryptoUtils.bufferToHex(
               await crypto.subtle
                 .deriveBits(
                   {
@@ -360,13 +367,16 @@
                 .then((bits) => new Uint8Array(bits)),
             ) as HexString;
 
-            const bobMessageSigningPublicKey = CryptoUtils.bufferToHex(
+            const bobMessageSigningPublicKeyDerived = CryptoUtils.bufferToHex(
               ed25519.getPublicKey(
                 new Uint8Array(
                   CryptoUtils.hexToBuffer(bobMessageSigningPrivateKey),
                 ),
               ),
             ) as HexString;
+
+            bobMessageEncryptionKey = bobMessageEncryptionKeyDerived;
+            bobMessageSigningPublicKey = bobMessageSigningPublicKeyDerived;
 
             if (bobMessageEncryptionKey !== messageEncryptionKey) {
               throw new Error("Bob's derived message encryption key mismatch!");
@@ -453,6 +463,9 @@
     messageSignature = "" as HexString;
     encryptedMessage = "" as HexString;
     decryptedMessage = "";
+    bobDecryptedMessageSecret = "" as HexString;
+    bobMessageEncryptionKey = "" as HexString;
+    bobMessageSigningPublicKey = "" as HexString;
   }
 </script>
 
@@ -578,7 +591,7 @@
           <div class="space-y-4">
             <!-- Message Input -->
             <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
-              <span class="block text-sm font-medium text-gray-300 mb-2"
+              <span class="block text-sm font-medium text-gray-300 mb-4"
                 >Message</span
               >
               <textarea
@@ -590,7 +603,7 @@
 
             <!-- Alice's Keys & Operations -->
             <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
-              <span class="block text-sm font-medium text-gray-300 mb-3"
+              <span class="block text-sm font-medium text-gray-300 mb-4"
                 >Alice's Keys & Operations</span
               >
               <div class="space-y-2 text-xs">
@@ -652,26 +665,28 @@
             </div>
 
             <!-- Encryption Process -->
-            {#if currentStep >= 6}
+            {#if currentStep >= 5}
               <div
                 class="bg-gray-800 border border-gray-600 rounded-lg p-4 transition-all duration-500"
               >
-                <span class="block text-sm font-medium text-gray-300 mb-3"
+                <span class="block text-sm font-medium text-gray-300 mb-4"
                   >Encrypted Output</span
                 >
                 <div class="space-y-2 text-xs">
-                  <div class="grid grid-cols-[100px_1fr] gap-2">
-                    <span class="text-gray-400">Signature:</span>
-                    <span class="font-mono text-pink-300 break-all"
-                      >{messageSignature}</span
-                    >
-                  </div>
-                  <div class="grid grid-cols-[100px_1fr] gap-2">
-                    <span class="text-gray-400">Encrypted:</span>
-                    <span class="font-mono text-indigo-300 break-all"
-                      >{encryptedMessage}</span
-                    >
-                  </div>
+                  {#if currentStep >= 6}
+                    <div class="grid grid-cols-[100px_1fr] gap-2">
+                      <span class="text-gray-400">Signature:</span>
+                      <span class="font-mono text-pink-300 break-all"
+                        >{messageSignature}</span
+                      >
+                    </div>
+                    <div class="grid grid-cols-[100px_1fr] gap-2">
+                      <span class="text-gray-400">Encrypted:</span>
+                      <span class="font-mono text-indigo-300 break-all"
+                        >{encryptedMessage}</span
+                      >
+                    </div>
+                  {/if}
                   <div class="grid grid-cols-[100px_1fr] gap-2">
                     <span class="text-gray-400">Enc. Secret:</span>
                     <span class="font-mono text-teal-300 break-all"
@@ -697,7 +712,7 @@
           <div class="space-y-4">
             <!-- Bob's Keys & Operations -->
             <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
-              <span class="block text-sm font-medium text-gray-300 mb-3"
+              <span class="block text-sm font-medium text-gray-300 mb-4"
                 >Bob's Keys & Operations</span
               >
               <div class="space-y-2 text-xs">
@@ -733,12 +748,34 @@
                     >
                   </div>
                 {/if}
+                {#if currentStep >= 7}
+                  <div
+                    class="grid grid-cols-[120px_1fr] gap-2 transition-all duration-500"
+                  >
+                    <span class="text-gray-400">Dec. Msg Secret:</span>
+                    <span class="font-mono text-green-300 break-all"
+                      >{bobDecryptedMessageSecret}</span
+                    >
+                  </div>
+                  <div class="grid grid-cols-[120px_1fr] gap-2">
+                    <span class="text-gray-400">Msg Enc Key:</span>
+                    <span class="font-mono text-cyan-300 break-all"
+                      >{bobMessageEncryptionKey}</span
+                    >
+                  </div>
+                  <div class="grid grid-cols-[120px_1fr] gap-2">
+                    <span class="text-gray-400">Msg Sign Pub:</span>
+                    <span class="font-mono text-orange-300 break-all"
+                      >{bobMessageSigningPublicKey}</span
+                    >
+                  </div>
+                {/if}
               </div>
             </div>
 
             <!-- Decrypted Message -->
             <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
-              <span class="block text-sm font-medium text-gray-300 mb-2"
+              <span class="block text-sm font-medium text-gray-300 mb-4"
                 >Received Message</span
               >
               <div
@@ -760,7 +797,7 @@
             <!-- Decryption Process -->
             {#if currentStep >= 6}
               <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
-                <span class="block text-sm font-medium text-gray-300 mb-3"
+                <span class="block text-sm font-medium text-gray-300 mb-4"
                   >Decryption Process</span
                 >
                 <div class="space-y-2 text-xs">

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { CryptoManager, CryptoUtils } from "$lib/crypto";
+  import { CryptoManager, CryptoUtils, MessageProtocol } from "$lib/crypto";
   import type { HexString } from "$lib/types";
-  import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 
   // Demo state
   let currentStep = 0;
@@ -75,25 +74,14 @@
       setTimeout(async () => {
         switch (currentStep) {
           case 1:
-            // generate ephemeral info using x25519 from @noble/curves
-            const aliceEphemeralPrivate = x25519.utils.randomSecretKey();
-            const aliceEphemeralPublic = x25519.getPublicKey(
-              aliceEphemeralPrivate,
-            );
+            // Generate ephemeral keypairs
+            const aliceEphemeral = MessageProtocol.generateEphemeralKeypair();
+            aliceKeys.ephemeralPrivate = aliceEphemeral.privateKey;
+            aliceKeys.ephemeralPublic = aliceEphemeral.publicKey;
 
-            aliceKeys.ephemeralPrivate = CryptoUtils.bufferToHex(
-              aliceEphemeralPrivate,
-            );
-            aliceKeys.ephemeralPublic =
-              CryptoUtils.bufferToHex(aliceEphemeralPublic);
-
-            const bobEphemeralPrivate = x25519.utils.randomSecretKey();
-            const bobEphemeralPublic = x25519.getPublicKey(bobEphemeralPrivate);
-
-            bobKeys.ephemeralPrivate =
-              CryptoUtils.bufferToHex(bobEphemeralPrivate);
-            bobKeys.ephemeralPublic =
-              CryptoUtils.bufferToHex(bobEphemeralPublic);
+            const bobEphemeral = MessageProtocol.generateEphemeralKeypair();
+            bobKeys.ephemeralPrivate = bobEphemeral.privateKey;
+            bobKeys.ephemeralPublic = bobEphemeral.publicKey;
             break;
           case 2:
             // Alice signs key info
@@ -148,235 +136,57 @@
             break;
           case 5:
             // Alice derives message keys
-            // hkdf
-            const sharedSecretBaseKey = await crypto.subtle.importKey(
-              "raw",
-              CryptoUtils.hexToBuffer(sharedSecret),
-              "HKDF",
-              false,
-              ["deriveBits", "deriveKey"],
+            const sharedDerivedBits =
+              await MessageProtocol.deriveSharedEncryptionKey(sharedSecret);
+
+            encryptedMessageSecret = await MessageProtocol.encryptMessageSecret(
+              aliceKeys.messageSecret,
+              sharedDerivedBits,
+              iv1,
             );
 
-            const infoShared = new TextEncoder().encode("shared");
-            const infoCipher = new TextEncoder().encode("cipher");
-            const infoSign = new TextEncoder().encode("signature");
-            const salt = new Uint8Array(16); // all zero salt
-
-            const sharedDerivedBits = await crypto.subtle.deriveBits(
-              {
-                name: "HKDF",
-                hash: "SHA-256",
-                salt,
-                info: infoShared,
-              },
-              sharedSecretBaseKey,
-              128,
-            ); // sdAP
-
-            // encrypt message secret with sdAP
-            encryptedMessageSecret = await crypto.subtle
-              .importKey("raw", sharedDerivedBits, { name: "AES-GCM" }, false, [
-                "encrypt",
-              ])
-              .then((key) =>
-                crypto.subtle.encrypt(
-                  {
-                    name: "AES-GCM",
-                    iv: iv1,
-                  },
-                  key,
-                  CryptoUtils.hexToBuffer(aliceKeys.messageSecret),
-                ),
-              )
-              .then((enc) => CryptoUtils.bufferToHex(new Uint8Array(enc)));
-
-            const messageSecretBaseKey = await crypto.subtle.importKey(
-              "raw",
-              CryptoUtils.hexToBuffer(aliceKeys.messageSecret),
-              "HKDF",
-              false,
-              ["deriveBits", "deriveKey"],
+            const messageKeys = await MessageProtocol.deriveMessageKeys(
+              aliceKeys.messageSecret,
             );
-
-            messageEncryptionKey = CryptoUtils.bufferToHex(
-              await crypto.subtle
-                .deriveBits(
-                  {
-                    name: "HKDF",
-                    hash: "SHA-256",
-                    salt,
-                    info: infoCipher,
-                  },
-                  messageSecretBaseKey,
-                  128,
-                )
-                .then((bits) => new Uint8Array(bits)),
-            ) as HexString;
-
-            messageSigningPrivateKey = CryptoUtils.bufferToHex(
-              await crypto.subtle
-                .deriveBits(
-                  {
-                    name: "HKDF",
-                    hash: "SHA-256",
-                    salt,
-                    info: infoSign,
-                  },
-                  messageSecretBaseKey,
-                  256,
-                )
-                .then((bits) => new Uint8Array(bits)),
-            ) as HexString;
-
-            messageSigningPublicKey = CryptoUtils.bufferToHex(
-              ed25519.getPublicKey(
-                new Uint8Array(
-                  CryptoUtils.hexToBuffer(messageSigningPrivateKey),
-                ),
-              ),
-            ) as HexString;
+            messageEncryptionKey = messageKeys.encryptionKey;
+            messageSigningPrivateKey = messageKeys.signingPrivateKey;
+            messageSigningPublicKey = messageKeys.signingPublicKey;
             break;
           case 6: {
-            // sign (recipient eph. pub || message) with message signing key
-            const dataToSign = new Uint8Array([
-              ...new Uint8Array(
-                CryptoUtils.hexToBuffer(bobKeys.ephemeralPublic!),
-              ),
-              ...new TextEncoder().encode(message),
-            ]);
-            const msig = ed25519.sign(
-              dataToSign,
-              new Uint8Array(CryptoUtils.hexToBuffer(messageSigningPrivateKey)),
+            const result = await MessageProtocol.signAndEncryptMessage(
+              message,
+              bobKeys.ephemeralPublic!,
+              messageSigningPrivateKey,
+              messageEncryptionKey,
+              iv2,
             );
-            messageSignature = CryptoUtils.bufferToHex(msig) as HexString;
-
-            // encrypt message with message encryption key
-            encryptedMessage = await crypto.subtle
-              .importKey(
-                "raw",
-                CryptoUtils.hexToBuffer(messageEncryptionKey),
-                { name: "AES-GCM" },
-                false,
-                ["encrypt"],
-              )
-              .then((key) =>
-                crypto.subtle.encrypt(
-                  {
-                    name: "AES-GCM",
-                    iv: iv2,
-                  },
-                  key,
-                  new TextEncoder().encode(message),
-                ),
-              )
-              .then((enc) => CryptoUtils.bufferToHex(new Uint8Array(enc)));
+            messageSignature = result.signature;
+            encryptedMessage = result.encryptedMessage;
             break;
           }
           case 7:
             // Bob decrypts message
-            // derive sdAP again
-            const bobSharedSecretBaseKey = await crypto.subtle.importKey(
-              "raw",
-              CryptoUtils.hexToBuffer(sharedSecret),
-              "HKDF",
-              false,
-              ["deriveBits", "deriveKey"],
-            );
+            const bobSharedDerivedBits =
+              await MessageProtocol.deriveSharedEncryptionKey(sharedSecret);
 
-            const infoSharedBob = new TextEncoder().encode("shared");
-            const saltBob = new Uint8Array(16); // all zero salt
-
-            const bobSharedDerivedBits = await crypto.subtle.deriveBits(
-              {
-                name: "HKDF",
-                hash: "SHA-256",
-                salt: saltBob,
-                info: infoSharedBob,
-              },
-              bobSharedSecretBaseKey,
-              128,
-            ); // sdAP
-
-            // decrypt message secret with sdAP
-            const decryptedMessageSecret = await crypto.subtle
-              .importKey(
-                "raw",
+            const decryptedMessageSecretValue =
+              await MessageProtocol.decryptMessageSecret(
+                encryptedMessageSecret,
                 bobSharedDerivedBits,
-                { name: "AES-GCM" },
-                false,
-                ["decrypt"],
-              )
-              .then((key) =>
-                crypto.subtle.decrypt(
-                  {
-                    name: "AES-GCM",
-                    iv: iv1,
-                  },
-                  key,
-                  CryptoUtils.hexToBuffer(encryptedMessageSecret),
-                ),
-              )
-              .then((dec) => CryptoUtils.bufferToHex(new Uint8Array(dec)));
+                iv1,
+              );
 
-            if (decryptedMessageSecret !== aliceKeys.messageSecret) {
+            if (decryptedMessageSecretValue !== aliceKeys.messageSecret) {
               throw new Error("Decrypted message secret does not match!");
             }
 
-            bobDecryptedMessageSecret = decryptedMessageSecret;
+            bobDecryptedMessageSecret = decryptedMessageSecretValue;
 
-            // derive message keys
-            const bobMessageSecretBaseKey = await crypto.subtle.importKey(
-              "raw",
-              CryptoUtils.hexToBuffer(decryptedMessageSecret),
-              "HKDF",
-              false,
-              ["deriveBits", "deriveKey"],
+            const bobMessageKeys = await MessageProtocol.deriveMessageKeys(
+              decryptedMessageSecretValue,
             );
-
-            const infoCipherBob = new TextEncoder().encode("cipher");
-            const infoSignBob = new TextEncoder().encode("signature");
-            const saltBob2 = new Uint8Array(16);
-
-            const bobMessageEncryptionKeyDerived = CryptoUtils.bufferToHex(
-              await crypto.subtle
-                .deriveBits(
-                  {
-                    name: "HKDF",
-                    hash: "SHA-256",
-                    salt: saltBob2,
-                    info: infoCipherBob,
-                  },
-                  bobMessageSecretBaseKey,
-                  128,
-                )
-                .then((bits) => new Uint8Array(bits)),
-            ) as HexString;
-
-            const bobMessageSigningPrivateKey = CryptoUtils.bufferToHex(
-              await crypto.subtle
-                .deriveBits(
-                  {
-                    name: "HKDF",
-                    hash: "SHA-256",
-                    salt: saltBob2,
-                    info: infoSignBob,
-                  },
-                  bobMessageSecretBaseKey,
-                  256,
-                )
-                .then((bits) => new Uint8Array(bits)),
-            ) as HexString;
-
-            const bobMessageSigningPublicKeyDerived = CryptoUtils.bufferToHex(
-              ed25519.getPublicKey(
-                new Uint8Array(
-                  CryptoUtils.hexToBuffer(bobMessageSigningPrivateKey),
-                ),
-              ),
-            ) as HexString;
-
-            bobMessageEncryptionKey = bobMessageEncryptionKeyDerived;
-            bobMessageSigningPublicKey = bobMessageSigningPublicKeyDerived;
+            bobMessageEncryptionKey = bobMessageKeys.encryptionKey;
+            bobMessageSigningPublicKey = bobMessageKeys.signingPublicKey;
 
             if (bobMessageEncryptionKey !== messageEncryptionKey) {
               throw new Error("Bob's derived message encryption key mismatch!");
@@ -386,43 +196,15 @@
               throw new Error("Bob's derived message signing key mismatch!");
             }
 
-            // verify signature
-            const dataToVerify = new Uint8Array([
-              ...new Uint8Array(
-                CryptoUtils.hexToBuffer(bobKeys.ephemeralPublic!),
-              ),
-              ...new TextEncoder().encode(message),
-            ]);
-            const isMessageSignatureValid = ed25519.verify(
-              new Uint8Array(CryptoUtils.hexToBuffer(messageSignature)),
-              dataToVerify,
-              new Uint8Array(CryptoUtils.hexToBuffer(messageSigningPublicKey)),
+            decryptedMessage = await MessageProtocol.verifyAndDecryptMessage(
+              encryptedMessage,
+              messageSignature,
+              bobKeys.ephemeralPublic!,
+              messageSigningPublicKey,
+              bobMessageEncryptionKey,
+              iv2,
+              message,
             );
-
-            if (!isMessageSignatureValid) {
-              throw new Error("Message signature verification failed!");
-            }
-
-            // decrypt message
-            decryptedMessage = await crypto.subtle
-              .importKey(
-                "raw",
-                CryptoUtils.hexToBuffer(bobMessageEncryptionKey),
-                { name: "AES-GCM" },
-                false,
-                ["decrypt"],
-              )
-              .then((key) =>
-                crypto.subtle.decrypt(
-                  {
-                    name: "AES-GCM",
-                    iv: iv2,
-                  },
-                  key,
-                  CryptoUtils.hexToBuffer(encryptedMessage),
-                ),
-              )
-              .then((dec) => new TextDecoder().decode(dec));
 
             if (decryptedMessage !== message) {
               throw new Error("Decrypted message does not match original!");

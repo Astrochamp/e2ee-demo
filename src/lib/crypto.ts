@@ -303,3 +303,202 @@ export class CryptoUtils {
     return ed25519.verify(signatureBytes, textBytes, publicKeyBytes);
   }
 }
+
+/**
+ * Helper class for E2EE message protocol operations.
+ * Encapsulates complex multi-step cryptographic workflows.
+ */
+export class MessageProtocol {
+  /**
+   * Generates ephemeral X25519 keypair for key exchange.
+   */
+  public static generateEphemeralKeypair(): { privateKey: HexString; publicKey: HexString; } {
+    const privateKey = x25519.utils.randomSecretKey();
+    const publicKey = x25519.getPublicKey(privateKey);
+    return {
+      privateKey: CryptoUtils.bufferToHex(privateKey),
+      publicKey: CryptoUtils.bufferToHex(publicKey),
+    };
+  }
+
+  /**
+   * Derives encryption key for message secret using HKDF from shared secret.
+   */
+  public static async deriveSharedEncryptionKey(sharedSecret: HexString): Promise<Uint8Array> {
+    const baseKey = await crypto.subtle.importKey(
+      "raw",
+      CryptoUtils.hexToBuffer(sharedSecret),
+      "HKDF",
+      false,
+      ["deriveBits"]
+    );
+
+    return new Uint8Array(
+      await crypto.subtle.deriveBits(
+        {
+          name: "HKDF",
+          hash: "SHA-256",
+          salt: new Uint8Array(16),
+          info: new TextEncoder().encode("shared"),
+        },
+        baseKey,
+        128
+      )
+    );
+  }
+
+  /**
+   * Encrypts message secret with derived shared key.
+   */
+  public static async encryptMessageSecret(
+    messageSecret: HexString,
+    sharedDerivedKey: Uint8Array,
+    iv: Uint8Array
+  ): Promise<HexString> {
+    const key = await crypto.subtle.importKey("raw", new Uint8Array(sharedDerivedKey), { name: "AES-GCM" }, false, ["encrypt"]);
+    const encrypted = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: new Uint8Array(iv) },
+      key,
+      CryptoUtils.hexToBuffer(messageSecret)
+    );
+    return CryptoUtils.bufferToHex(new Uint8Array(encrypted));
+  }
+
+  /**
+   * Decrypts message secret with derived shared key.
+   */
+  public static async decryptMessageSecret(
+    encryptedSecret: HexString,
+    sharedDerivedKey: Uint8Array,
+    iv: Uint8Array
+  ): Promise<HexString> {
+    const key = await crypto.subtle.importKey("raw", new Uint8Array(sharedDerivedKey), { name: "AES-GCM" }, false, ["decrypt"]);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: new Uint8Array(iv) },
+      key,
+      CryptoUtils.hexToBuffer(encryptedSecret)
+    );
+    return CryptoUtils.bufferToHex(new Uint8Array(decrypted));
+  }
+
+  /**
+   * Derives message encryption and signing keys from message secret using HKDF.
+   */
+  public static async deriveMessageKeys(messageSecret: HexString): Promise<{
+    encryptionKey: HexString;
+    signingPrivateKey: HexString;
+    signingPublicKey: HexString;
+  }> {
+    const baseKey = await crypto.subtle.importKey(
+      "raw",
+      CryptoUtils.hexToBuffer(messageSecret),
+      "HKDF",
+      false,
+      ["deriveBits"]
+    );
+
+    const salt = new Uint8Array(16);
+
+    const encryptionKeyBits = await crypto.subtle.deriveBits(
+      { name: "HKDF", hash: "SHA-256", salt, info: new TextEncoder().encode("cipher") },
+      baseKey,
+      128
+    );
+
+    const signingPrivateKeyBits = await crypto.subtle.deriveBits(
+      { name: "HKDF", hash: "SHA-256", salt, info: new TextEncoder().encode("signature") },
+      baseKey,
+      256
+    );
+
+    const signingPrivateKey = new Uint8Array(signingPrivateKeyBits);
+    const signingPublicKey = ed25519.getPublicKey(signingPrivateKey);
+
+    return {
+      encryptionKey: CryptoUtils.bufferToHex(new Uint8Array(encryptionKeyBits)),
+      signingPrivateKey: CryptoUtils.bufferToHex(signingPrivateKey),
+      signingPublicKey: CryptoUtils.bufferToHex(signingPublicKey),
+    };
+  }
+
+  /**
+   * Signs and encrypts a message.
+   */
+  public static async signAndEncryptMessage(
+    message: string,
+    recipientEphemeralPublic: HexString,
+    signingPrivateKey: HexString,
+    encryptionKey: HexString,
+    iv: Uint8Array
+  ): Promise<{ signature: HexString; encryptedMessage: HexString; }> {
+    // Sign: recipient ephemeral public || message
+    const dataToSign = new Uint8Array([
+      ...new Uint8Array(CryptoUtils.hexToBuffer(recipientEphemeralPublic)),
+      ...new TextEncoder().encode(message),
+    ]);
+    const signature = ed25519.sign(dataToSign, new Uint8Array(CryptoUtils.hexToBuffer(signingPrivateKey)));
+
+    // Encrypt message
+    const key = await crypto.subtle.importKey(
+      "raw",
+      CryptoUtils.hexToBuffer(encryptionKey),
+      { name: "AES-GCM" },
+      false,
+      ["encrypt"]
+    );
+    const encrypted = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: new Uint8Array(iv) },
+      key,
+      new TextEncoder().encode(message)
+    );
+
+    return {
+      signature: CryptoUtils.bufferToHex(signature),
+      encryptedMessage: CryptoUtils.bufferToHex(new Uint8Array(encrypted)),
+    };
+  }
+
+  /**
+   * Verifies signature and decrypts a message.
+   */
+  public static async verifyAndDecryptMessage(
+    encryptedMessage: HexString,
+    signature: HexString,
+    recipientEphemeralPublic: HexString,
+    signingPublicKey: HexString,
+    encryptionKey: HexString,
+    iv: Uint8Array,
+    expectedPlaintext: string
+  ): Promise<string> {
+    // Verify signature
+    const dataToVerify = new Uint8Array([
+      ...new Uint8Array(CryptoUtils.hexToBuffer(recipientEphemeralPublic)),
+      ...new TextEncoder().encode(expectedPlaintext),
+    ]);
+    const isValid = ed25519.verify(
+      new Uint8Array(CryptoUtils.hexToBuffer(signature)),
+      dataToVerify,
+      new Uint8Array(CryptoUtils.hexToBuffer(signingPublicKey))
+    );
+
+    if (!isValid) {
+      throw new Error("Message signature verification failed!");
+    }
+
+    // Decrypt message
+    const key = await crypto.subtle.importKey(
+      "raw",
+      CryptoUtils.hexToBuffer(encryptionKey),
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"]
+    );
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: new Uint8Array(iv) },
+      key,
+      CryptoUtils.hexToBuffer(encryptedMessage)
+    );
+
+    return new TextDecoder().decode(decrypted);
+  }
+}
